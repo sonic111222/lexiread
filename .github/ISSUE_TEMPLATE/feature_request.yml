@@ -1,0 +1,43 @@
+name: Feature request
+description: Suggest a focused improvement for LexiRead
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the learning problem, not just the UI you want.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - OCR / image import
+        - Reading layout
+        - Dictionary / word panel
+        - AI analysis
+        - Wordbook / review
+        - Accessibility / keyboard
+        - Packaging / distribution
+        - Other
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      options:
+        - label: This can work without an AI key
+        - label: This can work without sending the image or full text to a server
+        - label: I am willing to help test this
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

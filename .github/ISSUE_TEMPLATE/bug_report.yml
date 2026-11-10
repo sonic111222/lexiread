@@ -1,0 +1,63 @@
+name: Bug report
+description: Something in LexiRead is broken or looks wrong
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please do not include API keys, private
+        documents or personal information in screenshots or logs.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the actual result and what you expected.
+      placeholder: I uploaded a reading image and...
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Paste ...
+        3. Click ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Release tag or Git commit if known.
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 23H2
+  - type: dropdown
+    id: ocr-language
+    attributes:
+      label: Windows OCR language pack (if relevant)
+      options:
+        - English installed
+        - Only Chinese installed
+        - Unknown
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Area
+      options:
+        - OCR / image import
+        - Reading layout
+        - Dictionary / word panel
+        - AI analysis
+        - Wordbook / review
+        - Settings
+        - Other
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshot
+      description: Remove API keys, names and any private content first.

@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+.venv-build/
+venv/
+.env
+*.log
+.pytest_cache/
+build/
+dist/
+*.spec.bak
+data/lexiread.db
+data/lexiread.db-shm
+data/lexiread.db-wal
+data/uploads/*
+!data/uploads/.gitkeep
+tools/_ecdict_tmp/
