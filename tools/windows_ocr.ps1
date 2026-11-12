@@ -29,16 +29,24 @@ $bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.S
 
 $engine = $null
 $langTag = ""
+$warning = ""
 try {
-    $lang = [Windows.Globalization.Language]::new("en-US")
-    $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($lang)
-    if ($null -ne $engine) { $langTag = "en-US" }
+    $english = @([Windows.Media.Ocr.OcrEngine]::AvailableRecognizerLanguages |
+        Where-Object { $_.LanguageTag -like "en*" })
+    $preferred = @($english | Where-Object { $_.LanguageTag -eq "en-US" }) + @($english)
+    foreach ($language in $preferred) {
+        $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($language)
+        if ($null -ne $engine) { $langTag = $language.LanguageTag; break }
+    }
 } catch { }
 if ($null -eq $engine) {
     $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
     if ($null -ne $engine) { $langTag = $engine.RecognizerLanguage.LanguageTag }
 }
 if ($null -eq $engine) { throw "Windows OCR is not available. Install an OCR language pack in Windows Settings." }
+if ($langTag -notlike "en*") {
+    $warning = "English OCR language pack is not installed. Install English in Windows Settings for better accuracy."
+}
 
 $result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
 $lines = @()
@@ -61,6 +69,7 @@ foreach ($line in $result.Lines) {
 }
 $payload = [pscustomobject]@{
     language = $langTag
+    warning = $warning
     width = $decoder.PixelWidth
     height = $decoder.PixelHeight
     lines = $lines

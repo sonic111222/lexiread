@@ -15,3 +15,12 @@ data/lexiread.db-wal
 data/uploads/*
 !data/uploads/.gitkeep
 tools/_ecdict_tmp/
+
+runtime/
+
+pwa_vendor/
+dist_pwa/
+
+.zcode/
+
+docs/xiaohongshu/*.zip

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import csv
 import io
+import os
+import subprocess
 import time
 from pathlib import Path
 
@@ -15,6 +17,7 @@ from .storage import (
     clear_caches,
     clear_wordbook,
     delete_word,
+    get_settings as stored_settings,
     list_words,
     public_settings,
     save_word,
@@ -87,14 +90,56 @@ def run_ocr():
         normalized, preview_url, original_name = ocr.save_upload(upload)
     except ocr.OcrError as exc:
         return _error(str(exc), 400, "image_error")
+
+    settings = stored_settings()
+    ai_vision = bool(settings.get("ocr", {}).get("ai_vision"))
+    ai_error = ""
+    ai_unconfigured = False
+    if ai_vision:
+        if ai.is_configured():
+            began = time.perf_counter()
+            try:
+                text = ai.transcribe_image(normalized)
+                return _ok(
+                    {
+                        "text": text,
+                        "meta": {
+                            "engine": "AI 视觉识别",
+                            "ai_vision": True,
+                            "language": "en",
+                            "english_available": True,
+                            "duration_ms": int((time.perf_counter() - began) * 1000),
+                        },
+                        "preview_url": preview_url,
+                        "original_name": original_name,
+                    }
+                )
+            except ai.AIError as exc:
+                ai_error = str(exc)
+        else:
+            ai_unconfigured = True
+
     try:
         result = ocr.recognize(normalized)
     except ocr.OcrError as exc:
-        return _error(str(exc), 422, "ocr_failed", preview_url=preview_url)
+        detail = f"{exc}"
+        if ai_error:
+            detail += f"（AI 视觉识别也失败：{ai_error}）"
+        return _error(detail, 422, "ocr_failed", preview_url=preview_url)
+
+    meta = result["meta"]
+    meta["ai_vision"] = False
+    if ai_unconfigured:
+        meta["warning"] = "AI 视觉识别尚未配置 API Key，本次使用本机 OCR。可在设置中填写支持图片输入的模型。"
+    elif ai_error:
+        warning = meta.get("warning") or ""
+        meta["warning"] = f"AI 视觉识别失败，已回退本机 OCR：{ai_error}"
+        if warning:
+            meta["warning"] += f" {warning}"
     return _ok(
         {
             "text": result["text"],
-            "meta": result["meta"],
+            "meta": meta,
             "preview_url": preview_url,
             "original_name": original_name,
         }
@@ -105,6 +150,20 @@ def run_ocr():
 def uploaded_image(name: str):
     safe_name = Path(name).name
     return send_from_directory(UPLOAD_DIR, safe_name, max_age=3600)
+
+
+@api.post("/ocr/language-settings")
+def open_language_settings():
+    if os.name != "nt":
+        return _error("只有 Windows 需要安装 OCR 语言包。", 400, "unsupported")
+    try:
+        subprocess.Popen(
+            ["cmd", "/c", "start", "", "ms-settings:regionlanguage"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except OSError as exc:
+        return _error(f"无法打开系统设置：{exc}", 500, "settings_failed")
+    return _ok({"opened": True})
 
 
 @api.post("/analyze")

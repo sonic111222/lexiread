@@ -52,6 +52,34 @@ also ships their full license texts in
 | Pillow | HPND | https://python-pillow.org/ |
 | Python | PSF-2.0 | https://www.python.org/ |
 
+## Optional local OCR runtime
+
+### Tesseract OCR
+
+- Files: `runtime/tesseract/` (portable executable, DLLs and `eng`/`osd` data)
+- Source: https://github.com/tesseract-ocr/tesseract
+- License: Apache-2.0; Leptonica is BSD-2-Clause
+- Notes: this runtime is optional and is not required to run the app. When it
+  is present, LexiRead prefers it for English photos because it does not depend
+  on a Windows OCR language pack. When redistributing a build that includes
+  these files, keep Tesseract's Apache-2.0 license and Leptonica's license with
+  the runtime.
+
+## PWA runtime (optional)
+
+The browser build vendors these assets in `pwa_vendor/` (gitignored, downloaded
+by `tools/fetch_pwa_vendor.py`):
+
+| Component | Version | License | Source |
+| --- | --- | --- | --- |
+| Pyodide | 0.29.5 | MPL-2.0 | https://pyodide.org/ |
+| Tesseract.js | 5.1.1 | Apache-2.0 | https://github.com/naptha/tesseract.js |
+| Tesseract core (WASM) | 5.1.0 | Apache-2.0 | https://github.com/naptha/tesseract.js-core |
+| `eng.traineddata` (Tesseract.js data) | 4.0.0 best_int | Apache-2.0 | https://github.com/tesseract-ocr/tessdata |
+| SQLite (Pyodide wheel) | 1.0.0 | Public domain / SQLite blessing | https://sqlite.org/ |
+
+Keep these notices when redistributing `dist_pwa/`.
+
 ## Data services
 
 ### Wiktionary / Free Dictionary API

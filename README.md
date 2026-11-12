@@ -33,7 +33,8 @@ Local-first English reading studio for Windows: OCR a reading/cloze photo, turn 
 
 ## 功能
 
-- **本机 OCR**：调用 Windows 自带 OCR，图片不上传；识别后先校对再进入精读。
+- **本机 OCR**：优先使用随包附带的 Tesseract 英文引擎（`runtime/tesseract`），不依赖 Windows 语言包，图片不上传；未附带时回退 Windows OCR。自动多尺度识别并修复常见拍照错字，识别后先校对再进入精读。
+- **AI 视觉识别（可选）**：开启后把题图交给你配置的视觉模型转写，适合拍照、倾斜、光线不均的图片；失败会自动回退本机 OCR。
 - **阅读 / 完形排版**：自动拆文章、题干、选项和空格，保留阅读页的排版感。
 - **点词学习**：26,000 词条的 ECDICT 离线词库，提供中文释义、音标、考试标签、词形变化；本地未收录时再查 Wiktionary。
 - **原文语境**：词条会显示它在这篇文章里的句子，而不是只给一个孤立释义。
@@ -78,10 +79,30 @@ python app.py
 
 ### OCR 说明
 
-- 使用 Windows OCR，必须有 OCR 语言组件。
-- 当前只有中文语言包时也能识别英文，但个别字符可能出错；在 Windows「设置 → 时间和语言 → 语言」中安装 English 语言包会更稳定。
-- 识别结果永远可以先编辑，再精读。
+- 默认优先使用 **Tesseract 英文 OCR**：`runtime/tesseract/` 里带有便携运行库和 `eng` 语言数据，图片完全在本机处理，不需要联网或管理员权限。
+- 如果 `runtime/tesseract` 不存在（例如全新源码克隆），应用会回退 Windows OCR。此时强烈建议安装 English 语言包：Windows「设置 → 时间和语言 → 语言和区域 → 添加语言 → English (United States)」，并在该语言的“可选功能”中勾选“光学字符识别”。
+- 只有中文语言包时仍能识别英文，但准确率会明显下降；应用会在识别结果和设置页提示，并提供“打开 Windows 语言设置”按钮。
+- 应用会做多尺度预处理，并用词频表与 ECDICT 词形修复拍照常见的 `rn/m`、`l/i`、粘连词、全角标点等错误；识别结果始终可以先编辑。
+- 想进一步提高拍照识别率，可在「设置 → 本地 OCR」开启 **AI 视觉识别**。开启后图片会发送给你配置的视觉模型（如 `gpt-4o-mini`、`qwen-vl-plus`、`glm-4v-flash`），失败时自动回退本机 OCR。
 - 单栏、清晰的截图效果最好；复杂双栏讲义建议先裁剪。
+
+## 跨平台 PWA（Windows / macOS / Android / iPhone / iPad）
+
+除了 Windows 桌面版，项目还提供一个可安装的 PWA 跨平台版：Python 核心通过
+Pyodide 在浏览器里运行，OCR 使用 Tesseract.js，数据保存在浏览器本地，离线可用。
+
+```bat
+python tools/fetch_pwa_vendor.py
+python tools/build_pwa.py
+python pwa/serve_pwa.py
+```
+
+构建产物在 `dist_pwa/`，部署到任意 HTTPS 静态主机后，在 Windows/macOS 用
+Edge/Chrome 安装，在 Android 用 Chrome「安装应用」，在 iPhone/iPad 用 Safari
+「添加到主屏幕」。详细步骤、限制和数据说明见 [docs/PWA.md](docs/PWA.md)。
+
+> PWA 版不支持 AI 视觉识别；AI 精讲受浏览器 CORS 限制，部分服务商可能不可用。
+> 原生 APK/IPA/dmg 需要 Android SDK、Mac + Xcode 和 Apple 签名，不在当前范围内。
 
 ## AI 配置（可选）
 
@@ -91,6 +112,8 @@ python app.py
 - 模型示例：`deepseek-chat`
 - API Key：只保存在本机 `data/lexiread.db`
 - 本地 Ollama 可以不填 Key
+
+用于 **AI 视觉识别** 的模型必须支持图片输入，例如 `gpt-4o-mini`、`qwen-vl-plus`、`glm-4v-flash`。DeepSeek Chat 当前不支持图片，开启 AI 视觉识别后会回退本机 OCR。
 
 **仓库不包含任何 AI Key。** Key 不会发送到浏览器；AI 请求由本机 Python 进程直接发给你配置的模型服务。
 
@@ -126,7 +149,7 @@ DictionaryService  (cache / fallback / normalize)
 
 ## 隐私
 
-- 图片：本机 OCR，不上传。
+- 图片：默认本机 OCR，不上传；只有你主动开启“AI 视觉识别”时，图片才会发送给你配置的模型。
 - 离线词典：不上网。
 - 在线词典：本地未收录时，单个单词会发给 `api.dictionaryapi.dev`。
 - AI：只有主动点击“AI 精讲”时，题目文本才会发送给你配置的模型。
@@ -186,8 +209,8 @@ tests/
 
 ## 已知限制
 
-- 只支持 Windows（依赖 Windows OCR）。
-- 复杂多栏排版、手写体、低分辨率图片的 OCR 效果有限。
+- 只支持 Windows（本机 OCR 使用 Tesseract 或 Windows OCR；AI 视觉识别需要可用的兼容接口）。
+- 复杂多栏排版、手写体、低分辨率或强透视的图片，本机 OCR 效果有限；可安装 English 语言包或开启 AI 视觉识别。
 - 离线词典是常用词子集，不是完整词典；例句主要来自文章语境和在线补充。
 - AI 解析取决于用户配置的模型，可能有错误；请自行核对原文。
 - 公开源码客户端不包含账号、云同步或托管 AI 服务。

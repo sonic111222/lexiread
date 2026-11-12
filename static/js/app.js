@@ -10,7 +10,6 @@ const toastRoot = $("#toast-root");
 
 const READING_KEY = "lexiread:reading:v1";
 const READING_SIZE_KEY = "lexiread:reading-size";
-const REVIEW_SIZE_KEY = "lexiread:review-size";
 
 const PAGE_META = {
   studio: { kicker: "READING STUDIO", label: "精读台" },
@@ -586,7 +585,7 @@ function persistReading() {
     ai: reading.ai || null,
     rawText: reading.rawText,
     titleOverride: reading.titleOverride || "",
-    previewUrl: reading.previewUrl || "",
+    previewUrl: reading.previewUrl && !reading.previewUrl.startsWith("data:") ? reading.previewUrl : "",
     originalName: reading.originalName || "",
     userAnswers: reading.userAnswers || {},
     reveal: reading.reveal || {},
@@ -596,9 +595,20 @@ function persistReading() {
   try {
     localStorage.setItem(READING_KEY, JSON.stringify(payload));
   } catch {
-    if (!state.storageWarned) {
-      state.storageWarned = true;
-      toast("当前文章较长，浏览器无法暂存；刷新页面后可能丢失。", "error", 4500);
+    // AI notes can be large; keep the reading and drop the optional AI payload.
+    payload.ai = null;
+    payload.previewUrl = "";
+    try {
+      localStorage.setItem(READING_KEY, JSON.stringify(payload));
+      if (!state.storageWarned) {
+        state.storageWarned = true;
+        toast("AI 讲解较大，已仅保存原文与题目；刷新后 AI 内容需要重新生成。", "error", 5000);
+      }
+    } catch {
+      if (!state.storageWarned) {
+        state.storageWarned = true;
+        toast("当前文章较长，浏览器无法暂存；刷新页面后可能丢失。", "error", 4500);
+      }
     }
   }
 }
@@ -665,11 +675,12 @@ async function boot() {
 }
 
 function renderFatal(error) {
+  const pwa = Boolean(window.__LEXIREAD_PWA__);
   viewEl.innerHTML = `
     <section class="empty-state" style="margin-top:40px">
       <div class="empty-visual">${icon("alert")}</div>
-      <h3>本地服务没有响应</h3>
-      <p>${esc(error?.message || "请确认启动窗口仍在运行，然后刷新页面。")}</p>
+      <h3>${pwa ? "应用没有启动" : "本地服务没有响应"}</h3>
+      <p>${esc(error?.message || (pwa ? "请刷新页面重试。" : "请确认启动窗口仍在运行，然后刷新页面。"))}</p>
       <button class="btn primary" data-action="reload-page">${icon("refresh")}刷新页面</button>
     </section>`;
 }
@@ -800,7 +811,7 @@ async function handleFile(file) {
   }
   setBusy({
     title: "正在识别题目图片",
-    steps: ["增强图片清晰度", "调用本机 OCR 识别", "整理段落与换行"],
+    steps: ["增强图片清晰度", "识别题目文字", "整理段落与换行"],
   });
   try {
     const result = await api.uploadOcr(file);
@@ -824,6 +835,9 @@ function openOcrReview(result) {
        </div>`
     : "";
   const meta = result.meta || {};
+  const warning = meta.warning
+    ? `<div class="ocr-warning">${icon("alert")}<span>${esc(meta.warning)}</span></div>`
+    : "";
   openModal(
     `${modalHeader({
       eyebrow: "OCR REVIEW",
@@ -837,9 +851,12 @@ function openOcrReview(result) {
            <span>识别文字 · 可直接编辑</span>
            <span>${esc(meta.engine || "Windows OCR")} · ${meta.duration_ms ? `${(meta.duration_ms / 1000).toFixed(1)}s` : "本机处理"}</span>
          </div>
+         ${warning}
          <textarea class="ocr-textarea" id="ocr-text" spellcheck="false">${esc(result.text || "")}</textarea>
          <div class="upload-foot" style="justify-content:flex-start;margin-top:0">
-           ${icon("shield")}图片只在本机识别；查词会联网获取释义，只有点击“AI 精讲”后题目文本才会发送给你配置的模型。
+           ${icon("shield")}${meta.ai_vision
+             ? "图片已发送给你配置的 AI 模型识别；识别结果只在本机排版。"
+             : "图片只在本机识别；查词会联网获取释义，只有点击“AI 精讲”后题目文本才会发送给你配置的模型。"}
          </div>
        </div>
      </div>
@@ -1171,6 +1188,7 @@ function buildSettingsDraft() {
   const settings = deepClone(state.boot?.settings || {});
   const ai = settings.ai || {};
   const learning = settings.learning || {};
+  const ocr = settings.ocr || {};
   return {
     ai: {
       provider: ai.provider || "deepseek",
@@ -1183,6 +1201,9 @@ function buildSettingsDraft() {
       exam: learning.exam || "CET-4",
       accent: learning.accent || "us",
       voice_rate: Number(learning.voice_rate ?? 1),
+    },
+    ocr: {
+      ai_vision: Boolean(ocr.ai_vision),
     },
     keySet: Boolean(ai.api_key_set),
     clearKey: false,
@@ -1212,6 +1233,9 @@ async function persistSettings({ silent = false, target = "ai-form-status", rere
       exam: draft.learning.exam,
       accent: draft.learning.accent,
       voice_rate: Number(draft.learning.voice_rate),
+    },
+    ocr: {
+      ai_vision: Boolean(draft.ocr?.ai_vision),
     },
   };
   const data = await api.saveSettings(patch);
@@ -1331,7 +1355,7 @@ function renderLanding() {
             <span class="hero-note">${icon("sparkles")}AI 精讲</span>
             <span class="hero-note">${icon("bookmark")}生词收藏</span>
           </div>
-          <p class="hero-footnote">${icon("shield")}图片不会上传到云端；查词与 AI 都由你主动触发。</p>
+          <p class="hero-footnote">${icon("shield")}图片默认只在本机识别；AI 视觉识别与 AI 精讲都由你主动开启。</p>
         </div>
 
         <div class="upload-card">
@@ -1797,7 +1821,7 @@ function renderWordbook() {
       </div>
       <div class="page-heading-actions">
         ${hasTotal ? `<button class="btn primary" data-action="start-review">${icon("play")}开始复习</button>` : ""}
-        <a class="btn" href="${api.wordbookExportUrl}" download>${icon("download")}<span class="btn-label">导出 CSV</span></a>
+        <button class="btn" data-action="export-wordbook">${icon("download")}<span class="btn-label">导出 CSV</span></button>
         <button class="btn" data-action="new-reading">${icon("plus")}<span class="btn-label">精读新题</span></button>
       </div>
     </section>
@@ -1921,6 +1945,10 @@ function renderSettings() {
   const providerUrl = draft.ai.base_url || activePreset?.base_url || "尚未填写";
   const providerModel = draft.ai.model || activePreset?.model || "尚未填写";
   const languages = ocr.languages || [];
+  const englishOcr = ocr.english_available !== false;
+  const aiVision = Boolean(draft.ocr?.ai_vision);
+  const aiVisionAvailable = ocr.ai_vision_available !== false;
+  const pwa = Boolean(window.__LEXIREAD_PWA__);
 
   return `
     <section class="page-heading">
@@ -1974,7 +2002,7 @@ function renderSettings() {
               <button class="btn" data-action="test-ai">${icon("zap")}保存并测试连接</button>
             </div>
             <div class="form-status" id="ai-form-status" role="status"></div>
-            <p class="form-note">密钥只保存在本机，不会写入前端 JavaScript。AI 调用由本地 Python 服务转发。</p>
+            <p class="form-note">${pwa ? "密钥只保存在本机浏览器存储中；AI 请求由浏览器直接发送给你配置的服务商，部分服务商可能限制跨域请求。" : "密钥只保存在本机，不会写入前端 JavaScript。AI 调用由本地 Python 服务转发。"}</p>
           </div>
           <div class="ai-side-col">
             <div class="ai-provider-card">
@@ -1985,7 +2013,7 @@ function renderSettings() {
             </div>
             <div class="privacy-panel">
               <h4>${icon("shield")}隐私边界</h4>
-              <p>图片和 OCR 识别都在本机完成。离线词典未收录的单词会发给在线 Wiktionary；只有你主动点击“AI 精讲”时，题目全文才会发送到你配置的服务商。</p>
+              <p>默认图片和 OCR 识别都在本机完成。开启“AI 视觉识别”后，图片会发送给你配置的服务商；离线词典未收录的单词会发给在线 Wiktionary；只有你主动点击“AI 精讲”时，题目全文才会发送到你配置的服务商。</p>
             </div>
             <div class="privacy-panel">
               <h4>${icon("info")}推荐模型</h4>
@@ -1999,9 +2027,9 @@ function renderSettings() {
         <div class="settings-card-head">
           <div>
             <div class="settings-title">${icon("scan")}本地 OCR</div>
-            <p class="settings-desc">使用 Windows 自带的识别引擎，图片无需联网，也没有上传等待。</p>
+            <p class="settings-desc">${pwa ? "使用浏览器内置的 Tesseract 英文引擎，图片无需联网，也不会上传。" : "默认使用 Windows 自带的识别引擎，图片无需联网；也可以开启 AI 视觉识别处理拍照题图。"}</p>
           </div>
-          <span class="settings-status ${ocr.available ? "on" : ""}">${ocr.available ? "可用" : "不可用"}</span>
+          <span class="settings-status ${ocr.available && englishOcr ? "on" : ocr.available ? "warn" : ""}">${ocr.available ? (englishOcr ? "可用" : "缺英文包") : "不可用"}</span>
         </div>
         <div class="ocr-status-panel">
           <div class="ocr-status-icon">${icon("scan")}</div>
@@ -2011,7 +2039,23 @@ function renderSettings() {
             <div class="ocr-langs">${languages.length ? languages.map((lang) => `<code>${esc(lang)}</code>`).join("") : `<code>no language</code>`}</div>
           </div>
         </div>
-        <p class="form-note">当前语言包为中文 OCR 时也能识别英文；在 Windows 设置的“语言”中添加 English 语言包，识别会更稳定。</p>
+        ${aiVisionAvailable
+          ? `<div class="settings-section-divider"></div>
+        <div class="pref-row">
+          <div class="pref-info">
+            <h4>AI 视觉识别</h4>
+            <p>把图片发给你配置的视觉模型识别，适合拍照、倾斜、光线不均的题图。需要模型支持图片输入${activePreset?.vision_model ? `，例如 ${esc(activePreset.vision_model)}` : ""}。</p>
+          </div>
+          <button class="provider-chip ${aiVision ? "active" : ""}" data-action="toggle-ai-vision">${aiVision ? "已开启" : "开启"}</button>
+        </div>
+        <p class="form-note">${aiVision ? "开启后图片会发送到你的 AI 服务商；识别失败时自动回退本机 OCR。" : "关闭时图片只在本机处理；AI 未配置时开启也会回退本机 OCR。"}</p>`
+          : `<p class="form-note">PWA 版本使用 Tesseract.js 本地识别；AI 视觉识别请在桌面版或原生版本中使用。</p>`}
+        ${ocr.available && !englishOcr
+          ? `<div class="ocr-warning">${icon("alert")}<span>当前只检测到 ${languages.length ? languages.map((lang) => `<code>${esc(lang)}</code>`).join("") : "非英语"} OCR 语言包。英文识别准确率会明显下降，建议安装 English 语言包（含“光学字符识别”可选功能）后重新识别。</span></div>
+             <div class="form-actions" style="margin-top:10px">
+               ${ocr.can_open_language_settings === false ? "" : `<button class="btn" data-action="open-language-settings">${icon("settings")}打开 Windows 语言设置</button>`}
+             </div>`
+          : `<p class="form-note">${pwa ? "Tesseract.js 已内置英文模型，无需安装语言包。" : "在 Windows 设置的“语言”中添加 English 语言包，并勾选“光学字符识别”，识别会更稳定。"}</p>`}
         <div class="settings-section-divider"></div>
         <div class="ocr-status-panel">
           <div class="ocr-status-icon">${icon("book")}</div>
@@ -2066,7 +2110,7 @@ function renderSettings() {
         <div class="settings-card-head">
           <div>
             <div class="settings-title">${icon("notebook")}数据管理</div>
-            <p class="settings-desc">生词本数据保存在本机的 SQLite 文件中。</p>
+            <p class="settings-desc">${pwa ? "生词本数据保存在浏览器本地的 SQLite 存储中，清理浏览器数据会删除它。" : "生词本数据保存在本机的 SQLite 文件中。"}</p>
           </div>
           <span class="settings-status">${stats.total || 0} 词</span>
         </div>
@@ -2074,7 +2118,7 @@ function renderSettings() {
           <div class="data-action-row">
             <div class="data-action-icon">${icon("download")}</div>
             <div class="data-action-copy"><h4>导出全部生词</h4><p>CSV 文件，可用 Excel 打开</p></div>
-            <a class="btn small" href="${api.wordbookExportUrl}" download>导出</a>
+            <button class="btn small" data-action="export-wordbook">导出</button>
           </div>
           <div class="data-action-row">
             <div class="data-action-icon">${icon("refresh")}</div>
@@ -2377,7 +2421,7 @@ function openHelpModal() {
       description: "LexiRead 把一张题图拆成：原文、题目、知识卡和生词本。",
     })}
      <div class="help-list">
-       <div class="help-item"><span class="help-num">1</span><div><h4>导入题目</h4><p>拖入截图或用文本粘贴。图片只在本机跑 OCR；识别结果可以先改错字。</p></div></div>
+       <div class="help-item"><span class="help-num">1</span><div><h4>导入题目</h4><p>拖入截图或用文本粘贴。图片默认只在本机跑 OCR；识别结果可以先改错字。</p></div></div>
        <div class="help-item"><span class="help-num">2</span><div><h4>先做题，再看解析</h4><p>题目选项可以直接点选。本地模式会给出定位词和原文线索；连接 AI 后可核对答案与依据。</p></div></div>
        <div class="help-item"><span class="help-num">3</span><div><h4>点词积累</h4><p>文章中所有单词都可点击。词条面板提供音标、真人音频、释义、例句、搭配和词形变化，可一键收藏。</p></div></div>
        <div class="help-item"><span class="help-num">4</span><div><h4>在生词本里复习</h4><p>生词本支持搜索、标记掌握和抽认卡复习。数据保存在本机 SQLite，也可以导出 CSV。</p></div></div>
@@ -2834,6 +2878,45 @@ async function handleAction(action, element) {
         button.disabled = false;
         button.classList.remove("loading");
         button.innerHTML = original;
+      }
+      break;
+    }
+
+    case "export-wordbook": {
+      try {
+        if (typeof api.exportWordbook === "function") {
+          await api.exportWordbook();
+        } else {
+          window.location.href = api.wordbookExportUrl;
+        }
+        toast("生词本已导出。", "success");
+      } catch (error) {
+        toast(error?.message || "导出失败。", "error");
+      }
+      break;
+    }
+
+    case "toggle-ai-vision": {
+      if (!state.settingsDraft) state.settingsDraft = buildSettingsDraft();
+      state.settingsDraft.ocr.ai_vision = !state.settingsDraft.ocr.ai_vision;
+      const enabled = state.settingsDraft.ocr.ai_vision;
+      try {
+        await persistSettings({ silent: true });
+        render();
+        toast(enabled ? "AI 视觉识别已开启。" : "已关闭 AI 视觉识别。", "success");
+      } catch (error) {
+        toast(error?.message || "设置保存失败。", "error");
+        render();
+      }
+      break;
+    }
+
+    case "open-language-settings": {
+      try {
+        await api.openLanguageSettings();
+        toast("已打开 Windows 语言设置。安装 English 语言包后重启程序。", "success");
+      } catch (error) {
+        toast(error?.message || "无法打开系统设置。", "error");
       }
       break;
     }

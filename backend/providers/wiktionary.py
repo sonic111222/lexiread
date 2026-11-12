@@ -4,8 +4,6 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import quote
 
-import requests
-
 from .base import DictionaryProvider, ProviderError
 
 API_URL = "https://api.dictionaryapi.dev/api/v2/entries/en"
@@ -40,6 +38,11 @@ class WiktionaryProvider(DictionaryProvider):
     def lookup(self, query: str) -> dict | None:
         if not query or len(query) > 80:
             return None
+        try:
+            import requests
+        except ImportError as exc:
+            raise ProviderError("当前环境没有网络组件，在线词典不可用。") from exc
+
         try:
             response = requests.get(
                 f"{API_URL}/{quote(query)}",

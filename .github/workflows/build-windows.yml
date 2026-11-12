@@ -29,11 +29,21 @@ jobs:
       - name: Build portable executable
         run: python -m PyInstaller --clean --noconfirm lexiread.spec
 
+      - name: Install Tesseract OCR runtime
+        run: choco install tesseract --no-progress -y
+
+      - name: Copy Tesseract runtime
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/runtime/tesseract | Out-Null
+          Copy-Item 'C:\Program Files\Tesseract-OCR\*' dist/runtime/tesseract -Recurse -Force
+
       - name: Prepare release files
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force release | Out-Null
           Copy-Item dist/LexiRead.exe release/
+          Copy-Item -Recurse dist/runtime release/runtime
           Copy-Item README.md, README_EN.md, LICENSE, AUTHORS.md, NOTICE, COMMERCIAL.md, PRIVACY.md, SECURITY.md, THIRD_PARTY_NOTICES.md release/
           Copy-Item docs/WINDOWS_QUICKSTART.txt release/README-Windows.txt
           Copy-Item -Recurse LICENSES release/

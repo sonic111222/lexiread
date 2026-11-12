@@ -22,7 +22,11 @@ See [LICENSE](LICENSE) and [COMMERCIAL.md](COMMERCIAL.md).
 
 ## Features
 
-- Local OCR through Windows; images never leave the machine.
+- Local OCR through Tesseract (bundled under `runtime/tesseract`) or Windows;
+  images never leave the machine by default. Multiple scales plus
+  dictionary-based cleanup repair common photo OCR errors.
+- Optional AI vision transcription for photographed pages (opt-in; the image is
+  sent to your configured model). Falls back to local OCR automatically.
 - Reading and cloze-test layouts with editable OCR review.
 - 26,000-entry offline ECDICT subset (Chinese definitions, phonetics, forms).
 - Wiktionary online fallback only when the offline dictionary has no entry.
@@ -58,9 +62,36 @@ show a warning.
 
 ## OCR notes
 
-Install an English OCR language pack in Windows for the best results. The app
-also works with a Chinese OCR language pack, but individual characters may be
-misread. OCR output can always be edited before analysis.
+The app prefers the bundled Tesseract English runtime in `runtime/tesseract`
+when it is present. It runs fully offline and does not require a Windows
+language pack. If that folder is missing, the app falls back to Windows OCR;
+install an English OCR language pack in that case (Settings → Time & language →
+Language & region → Add a language → English (United States), then enable the
+"Optical character recognition" optional feature). Both the OCR review dialog
+and Settings warn you when the Windows fallback has no English pack.
+
+For hard phone photos, enable **AI vision recognition** in Settings → Local OCR.
+The image is sent to your configured vision-capable model (for example
+`gpt-4o-mini`, `qwen-vl-plus` or `glm-4v-flash`) and the app falls back to local
+OCR if the request fails. OCR output can always be edited before analysis.
+
+## Cross-platform PWA
+
+A cross-platform PWA build reuses the Python core through Pyodide and uses
+Tesseract.js for OCR. It installs on Windows/macOS (Edge/Chrome), Android
+(Chrome) and iPhone/iPad (Safari Add to Home Screen), works offline, and keeps
+data in browser storage.
+
+```bat
+python tools/fetch_pwa_vendor.py
+python tools/build_pwa.py
+python pwa/serve_pwa.py
+```
+
+Deploy `dist_pwa/` to any HTTPS static host. See [docs/PWA.md](docs/PWA.md) for
+installation, limits and data notes. The PWA does not offer AI vision OCR, and
+AI requests depend on the provider's browser CORS policy. Native APK/IPA/dmg
+packages require platform toolchains and are not included.
 
 ## AI setup
 
@@ -68,6 +99,10 @@ Open Settings → AI connection. Any OpenAI Chat Completions compatible endpoint
 works: DeepSeek, OpenAI, Qwen, Zhipu or a local Ollama server. The API key is
 stored only in the local SQLite database and is never returned to the frontend.
 No key is bundled with this repository.
+
+AI vision OCR requires a model that accepts image input, such as
+`gpt-4o-mini`, `qwen-vl-plus` or `glm-4v-flash`. DeepSeek Chat does not accept
+images, so AI vision will fall back to local OCR when it is selected.
 
 AI output is study assistance, not an authoritative exam answer.
 
@@ -92,7 +127,8 @@ See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Privacy
 
-- Images stay local.
+- Images stay local unless you explicitly enable AI vision recognition, which
+  sends the image to your configured model.
 - Offline lookups stay local.
 - An online lookup sends only the selected word to `api.dictionaryapi.dev`.
 - AI sends the passage only after the user explicitly clicks "AI 精讲".

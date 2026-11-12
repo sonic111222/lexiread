@@ -1,0 +1,35 @@
+name: pwa
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Cache PWA vendor assets
+        uses: actions/cache@v4
+        with:
+          path: pwa_vendor
+          key: pwa-vendor-${{ hashFiles('tools/fetch_pwa_vendor.py') }}
+      - name: Fetch PWA vendor assets
+        run: python tools/fetch_pwa_vendor.py
+      - name: Build PWA
+        run: python tools/build_pwa.py
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Upload PWA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lexiread-pwa
+          path: dist_pwa
+          retention-days: 14

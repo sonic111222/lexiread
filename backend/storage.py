@@ -122,7 +122,7 @@ def update_settings(patch: dict) -> dict:
     if not isinstance(patch, dict):
         raise ValueError("设置格式不正确")
     with _DB_LOCK, connect() as conn:
-        for section in ("ai", "learning"):
+        for section in ("ai", "learning", "ocr"):
             if not isinstance(patch.get(section), dict):
                 continue
             row = conn.execute("SELECT value FROM settings WHERE key = ?", (section,)).fetchone()

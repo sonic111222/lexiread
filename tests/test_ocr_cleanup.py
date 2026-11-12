@@ -19,6 +19,10 @@ class OcrCleanupTests(unittest.TestCase):
     def test_split_word_merge(self):
         self.assertEqual(_fix_split_words("read eve ry day"), "read every day")
 
+    def test_contractions_are_not_rewritten(self):
+        self.assertEqual(_fix_ocr_text("I'll go now."), "I'll go now.")
+        self.assertEqual(_fix_ocr_text("We'll see."), "We'll see.")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,14 +5,15 @@ without it: local parsing and dictionary lookups never call this module.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
+import io
 import json
 import re
 import time
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
-
-import requests
 
 from .storage import get_ai_cache, get_settings, put_ai_cache
 
@@ -60,7 +61,7 @@ def _endpoint(base_url: str) -> str:
     return base + "/chat/completions"
 
 
-def _error_from_response(response: requests.Response) -> str:
+def _error_from_response(response: Any) -> str:
     try:
         payload = response.json()
         error = payload.get("error")
@@ -77,6 +78,11 @@ def _error_from_response(response: requests.Response) -> str:
 
 
 def _post(messages: list[dict], *, temperature: float = 0.2, max_tokens: int = 6000, json_mode: bool = True) -> str:
+    try:
+        import requests
+    except ImportError as exc:
+        raise AIError("当前环境没有网络组件，AI 功能不可用。") from exc
+
     if not is_configured():
         raise AIError("AI 尚未连接。请到设置页填写兼容 OpenAI 的 API 信息。")
     cfg = _ai_settings()
@@ -431,6 +437,79 @@ def _build_messages(analysis: dict, exam: str) -> list[dict]:
             ),
         },
     ]
+
+
+VISION_PROMPT = """Transcribe every visible English character in this exam photo.
+
+Rules:
+- Output plain text only. Do not translate, explain, answer the questions, or add commentary.
+- Keep paragraph breaks. Put each question number and each A-D option on its own line.
+- Preserve the original spelling and punctuation. Use ______ for fill-in-the-blank lines.
+- If a word is genuinely unreadable, write [?] instead of inventing a word."""
+
+
+def transcribe_image(image_path: Path) -> str:
+    """Use a vision-capable OpenAI-compatible model to read an exam photo."""
+    if not is_configured():
+        raise AIError("AI 尚未连接。请到设置页填写兼容 OpenAI 的 API 信息。")
+    try:
+        from PIL import Image
+
+        with Image.open(image_path) as image:
+            image = image.convert("RGB")
+            image.thumbnail((1800, 1800), Image.Resampling.LANCZOS)
+            buffer = io.BytesIO()
+            image.save(buffer, "JPEG", quality=88, optimize=True)
+    except Exception as exc:
+        raise AIError("无法读取图片，请换一张 PNG、JPG 或 WebP 格式的题图。") from exc
+
+    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+    content = _post(
+        [
+            {
+                "role": "system",
+                "content": "You are a precise OCR transcriber for English exam papers.",
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": VISION_PROMPT},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{encoded}"},
+                    },
+                ],
+            },
+        ],
+        temperature=0,
+        max_tokens=6000,
+        json_mode=False,
+    )
+    text = content.strip()
+    text = re.sub(r"^```(?:text)?\s*", "", text, flags=re.I)
+    text = re.sub(r"\s*```$", "", text)
+    text = re.sub(
+        r"^(?:here (?:is|are) (?:the )?(?:transcription|text|content)|"
+        r"below is (?:the )?(?:transcription|text|content)|"
+        r"以下是(?:图片|题目)?(?:文字|内容|识别结果)|识别结果[:：])[^\n]{0,80}\n+",
+        "",
+        text,
+        flags=re.I,
+    )
+    text = re.sub(r"^\s*#{1,6}\s*", "", text, flags=re.M)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if len(re.findall(r"[A-Za-z]", text)) < 10:
+        raise AIError("AI 没有识别出足够的英文，请换一个支持图片输入的模型。")
+    if len(text) < 500 and re.search(
+        r"(?:I'?m sorry|I cannot|I can't|unable to (?:view|read|process)|无法(?:查看|识别|读取)|抱歉)",
+        text,
+        re.I,
+    ):
+        raise AIError("AI 没有完成图片转写，请换一个支持图片输入的模型。")
+    chinese = len(re.findall(r"[\u4e00-\u9fff]", text))
+    if chinese > len(text) * 0.3:
+        raise AIError("AI 返回的内容更像翻译而不是原文，请换一个视觉模型重试。")
+    return text
 
 
 def analyze(analysis: dict, *, force: bool = False) -> dict:

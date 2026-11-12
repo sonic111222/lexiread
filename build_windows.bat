@@ -15,6 +15,12 @@ if errorlevel 1 goto :error
 "%BUILD_PY%" -m PyInstaller --clean --noconfirm lexiread.spec
 if errorlevel 1 goto :error
 
+if exist "%~dp0runtime\tesseract\tesseract.exe" (
+  echo Bundling Tesseract English OCR runtime...
+  if not exist "%~dp0dist\runtime" mkdir "%~dp0dist\runtime"
+  xcopy /E /I /Y "%~dp0runtime\tesseract" "%~dp0dist\runtime\tesseract" >nul
+)
+
 echo.
 echo  Build complete: dist\LexiRead.exe
 echo  Windows may show a SmartScreen warning because this public-source build is not code-signed.

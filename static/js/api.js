@@ -55,6 +55,7 @@ export const api = {
     return request("/ocr", { method: "POST", body: form });
   },
   analyze: (text, title = "") => request("/analyze", { method: "POST", body: { text, title } }),
+  openLanguageSettings: () => request("/ocr/language-settings", { method: "POST" }),
   aiAnalyze: (text, title = "", force = false) =>
     request("/ai/analyze", { method: "POST", body: { text, title, force } }),
   samples: () => request("/samples"),
@@ -77,5 +78,19 @@ export const api = {
   saveSettings: (patch) => request("/settings", { method: "PUT", body: patch }),
   testAI: () => request("/settings/test", { method: "POST" }),
   clearCache: (kind = "all") => request("/settings/clear-cache", { method: "POST", body: { kind } }),
+  async exportWordbook() {
+    const response = await fetch(`${API_ROOT}/wordbook/export`);
+    if (!response.ok) throw new ApiError("导出失败，请稍后重试。", { status: response.status });
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "lexiread-wordbook.csv";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    return true;
+  },
   wordbookExportUrl: `${API_ROOT}/wordbook/export`,
 };
